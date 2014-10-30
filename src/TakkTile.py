@@ -1,1 +1,1 @@
-../../TakkTile-usb/TakkTile.py
+/media/007/007/Programs/TakkTile-usb/TakkTile.py
