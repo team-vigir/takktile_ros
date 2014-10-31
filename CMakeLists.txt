@@ -64,5 +64,8 @@ include_directories(include
 # all install targets should use catkin DESTINATION variables
 # See http://ros.org/doc/groovy/api/catkin/html/adv_user_guide/variables.html
 
-#install(PROGRAMS src/takktile_node.py src/dot_display.py
-#        src/viz_array.py DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+install(PROGRAMS
+        src/takktile_ros/takktile_node.py
+        src/takktile_ros/dot_display.py
+        src/takktile_ros/contact_node.py
+        src/takktile_ros/viz_array.py DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
