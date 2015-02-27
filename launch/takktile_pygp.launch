@@ -1,0 +1,10 @@
+<?xml version="1.0" ?>
+<launch>
+	<arg name="show_takk_graph" default="False"/>
+	<node name='gp_classifier' type='practice.py' pkg='takktile_ros' output='screen' />
+	<node name='average_contacts' type='average_contacts.py' pkg='takktile_ros' output='screen' />
+
+	<if test="$(arg show_takk_graph)">
+		<node name='takk_graph' type='rqt_plot' pkg='rqt_plot' args='' output='screen' />
+	</if>
+</launch>
