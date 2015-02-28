@@ -8,12 +8,14 @@
 
 import rospy
 import roslib; roslib.load_manifest('takktile_ros')
-from takktile_ros.msg import Touch
+from takktile_ros.msg import Touch, Raw
 import rospkg
 
 recent_takktile_data = None
 rospack = rospkg.RosPack()
 takktile_base_path = rospack.get_path('takktile_ros')
+
+gp_called_pub = None
 
 def tactile_callback(msg):
     global recent_takktile_data
@@ -87,6 +89,7 @@ def run_gp(obj):
     #-----------END LOADING DATA----------------------------------------
 
     global recent_takktile_data
+    gp_log_contacts = recent_takktile_data
     z = np.array([recent_takktile_data])
     print 'this is x',x.shape
     print 'this is y',y.shape
@@ -105,6 +108,14 @@ def run_gp(obj):
     print ys2
 
     #----------------------------END GP---------------------------------
+    log_results_msg = Touch()
+    data = list(gp_log_contacts)
+    data.extend([ym, ys2])
+    log_results_msg.pressure = data
+
+    global gp_called_pub
+    gp_called_pub.publish(log_results_msg)
+
     return ym, ys2
 
 if __name__ == "__main__":
@@ -112,15 +123,15 @@ if __name__ == "__main__":
     print "Control of GP routed to main"
 
     takktile_sub = rospy.Subscriber("/gp_contacts", Touch, tactile_callback)
-    
+    rospy.logwarn("Hacking usage of takktile_msgs/Raw msg to transmit gp results and gp_input for logging. Need to make a custom message later.")
+    gp_called_pub = rospy.Publisher("/gp_logger", Touch, queue_size=1)	
+
     while True:
-        raw_input("Press enter to run GP.")
-        run_gp("cylinder")
-
-
-
-
-
-
+        user_input = raw_input("Press enter to run GP (q to quit): ")
+	if user_input.lower() == "q":
+		break
+	else:
+        	rospy.logwarn("Using cylinder training data.")
+		run_gp("cylinder")
 
 

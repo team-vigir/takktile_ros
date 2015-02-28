@@ -92,7 +92,6 @@ def average(scaled_values):
 if __name__ == '__main__':
 	rospy.init_node("takktile_average_node")
 	print "Hi Sai, this node is online"
-	global pubby
 
 	tactile_subscriber = rospy.Subscriber("/takktile/calibrated", Touch, tactile_callback)
 	pubby = rospy.Publisher("/gp_contacts", Touch, queue_size=1) 
