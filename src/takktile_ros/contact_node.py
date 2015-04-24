@@ -10,9 +10,14 @@ def tactile_callback(msg):
         #print "Got a message!"
         global pubby
         out_msg = Touch()
-        scaler = -1.0 / 200
-        scaled_values = []
-        for pressure in msg.pressure:
+        scaler = -1.0 / 50
+        scaled_pressures = []
+
+	#Hack, chop and slice!~!!!!!!!!!!!
+	msg.pressure = list(msg.pressure[0:6]) + [0,0,0,0,0,0] + list(msg.pressure[7:])
+
+
+	for pressure in msg.pressure:
                 out_pressure =  (pressure * scaler)
                 if out_pressure < 0:
                         out_pressure = 0
@@ -20,14 +25,12 @@ def tactile_callback(msg):
                         out_pressure = 1
 
                 #print "\tpressure: ", pressure
-                out_msg.pressure.append(out_pressure)
-
-#        out_msg.pressure.append(average(scaled_values[0:4]))
-#        out_msg.pressure.append(average(scaled_values[4:8]))
-#        out_msg.pressure.append(average(scaled_values[8:12]))
-#        out_msg.pressure.append(average(scaled_values[12:17]))
-#        out_msg.pressure.append(average(scaled_values[17:22]))
-#        out_msg.pressure.append(average(scaled_values[22:]))
+                scaled_pressures.append(out_pressure)
+	
+	out_msg.pressure.append(average(scaled_pressures[13:19]))
+	out_msg.pressure.append(average(scaled_pressures[7:13]))
+	out_msg.pressure.append(average(scaled_pressures[0:6]))
+	out_msg.pressure.append(average(scaled_pressures[20:]))
 
         pubby.publish(out_msg)
 
@@ -40,9 +43,9 @@ def average(scaled_values):
 
 if __name__ == '__main__':
         rospy.init_node("takktile_converter_node")
-        print "Hi Sai, this node is online"
         global pubby
 
-        tactile_subscriber = rospy.Subscriber("/takktile/calibrated", Touch, tactile_callback)
-        pubby = rospy.Publisher("/hand_contacts", Touch, queue_size=1)
+	hand = "left" #TODO: Make this a private parameter
+        tactile_subscriber = rospy.Subscriber("/" + hand + "_hand/tactile_data", Touch, tactile_callback)
+        pubby = rospy.Publisher("/robotiq_hands/" + hand[0] + "_hand/hand_contacts", Touch, queue_size=1)
         rospy.spin()
