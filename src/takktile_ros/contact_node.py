@@ -3,49 +3,110 @@ import roslib; roslib.load_manifest('takktile_ros')
 import rospy
 from takktile_ros.msg import Raw, Touch, Contact, Info
 from std_msgs.msg import String
+import sys
 
-pubby = None
+#TODO: Run this aggregation node on the pi itself and prevent transmitting lots of crap data onto the system
 
-def tactile_callback(msg):
-        #print "Got a message!"
-        global pubby
-        out_msg = Touch()
-        scaler = -1.0 / 50
-        scaled_pressures = []
+# An easy-to-reference model of the hand's takktile arrays.
+#	Meant to be filled with float data between 0 and 1
+#	or an error for each finger.
+class TactileState:
+	def __init__(self, err_code):
+		self.middle = err_code
+		self.pinky = err_code
+		self.index = err_code
+		self.palm = err_code
 
-	#Hack, chop and slice!~!!!!!!!!!!!
-	msg.pressure = list(msg.pressure[0:6]) + [0,0,0,0,0,0] + list(msg.pressure[7:])
-
-
-	for pressure in msg.pressure:
-                out_pressure =  (pressure * scaler)
-                if out_pressure < 0:
-                        out_pressure = 0
-                elif out_pressure > 1:
-                        out_pressure = 1
-
-                #print "\tpressure: ", pressure
-                scaled_pressures.append(out_pressure)
+class TactileAggregator:
+	def __init__(self, hand_name):
+		if hand_name is not "left" and hand_name is not "right":
+			rospy.logerr("Improper hand argument given to TactileAggregator constructor")
+		
+		# Constants
+		self.err_code = -1	# Code to send when a finger is missing. TODO: make is a rosparam
+	        self.scaler = -1.0 / 50	# Value to scale the calibrated sensor data
 	
-	out_msg.pressure.append(average(scaled_pressures[13:19]))
-	out_msg.pressure.append(average(scaled_pressures[7:13]))
-	out_msg.pressure.append(average(scaled_pressures[0:6]))
-	out_msg.pressure.append(average(scaled_pressures[20:]))
+		# ROS IO
+		self.tactile_data_sub = rospy.Subscriber("/" + hand_name+ "_hand/tactile_data", Touch, self.tactile_callback)
+		self.tactile_info_sub = rospy.Subscriber("/" + hand_name + "_hand/sensor_info", Info, self.info_callback)
+		self.tactile_aggregate_pub = rospy.Publisher("/robotiq_hands/" + hand_name[0] + "_hand/hand_contacts", Touch, queue_size=1)
+		
+		self.cur_indices = None
 
-        pubby.publish(out_msg)
+	def info_callback(self, msg):
+		self.cur_indices = msg.indexes
 
-def average(scaled_values):
-        summy = 0
-        for value in scaled_values:
-                summy += value
+	def tactile_callback(self, msg):
+		# Check that we can parse sensor data
+		if self.cur_indices == None:
+			rospy.loginfo("No sensor info data present. Publishing error code for all fingers")
+			return
 
-        return summy / (len(scaled_values))
+	        # Scale data
+	        scaled_pressures = []
+		for pressure in msg.pressure:
+	                out_pressure =  (pressure * self.scaler)
+	                if out_pressure < 0:
+	                        out_pressure = 0
+	                elif out_pressure > 1:
+	                        out_pressure = 1
+	
+	                #print "\tpressure: ", pressure
+	                scaled_pressures.append(out_pressure)
+		
+		# Iterate through available sensor data using sensor info
+		#	to determine when to pull values and when to error-fill
+		# The order: index, pinky, middle, palm
+		touch_record = TactileState(self.err_code)
+		sensor_start = 0
+		if self.index_present():
+			touch_record.index = self.aggregate(scaled_pressures[sensor_start:sensor_start + 6])
+			sensor_start += 6
+
+		if self.pinky_present():
+			touch_record.pinky = self.aggregate(scaled_pressures[sensor_start:sensor_start + 6])
+			sensor_start += 6
+
+		if self.middle_present():
+			touch_record.middle = self.aggregate(scaled_pressures[sensor_start:sensor_start + 6])
+			sensor_start += 6
+
+		if self.palm_present():
+			touch_record.palm = self.aggregate(scaled_pressures[sensor_start:])
+			
+	
+	        # Compose out message: Albert's code expects the following order:
+		#	middle, pinky, index, palm
+		out_msg = Touch()
+		out_msg.pressure = [touch_record.middle, touch_record.pinky, touch_record.index, touch_record.palm]
+
+        	self.tactile_aggregate_pub.publish(out_msg)
+	
+	def index_present(self):
+		return (3 in self.cur_indices)
+
+	def pinky_present(self):
+		return (8 in self.cur_indices)
+
+	def middle_present(self):
+		return (14 in self.cur_indices)
+
+	def palm_present(self):
+		return (25 in self.cur_indices)
+
+	# Currently just a straight average
+	def aggregate(self, pad_pressure_list):
+	        summy = 0
+	        for value in pad_pressure_list:
+	                summy += value
+	
+	        return summy / (len(pad_pressure_list))
 
 if __name__ == '__main__':
-        rospy.init_node("takktile_converter_node")
-        global pubby
+        rospy.init_node("hand_contacts_node")
+	rospy.logwarn("Assumption: the takktile sensor info data feed will omit entire pads, not single sensors inside a pad.")
+        
+	l_hand = TactileAggregator("left")
+	r_hand = TactileAggregator("right")
 
-	hand = "left" #TODO: Make this a private parameter
-        tactile_subscriber = rospy.Subscriber("/" + hand + "_hand/tactile_data", Touch, tactile_callback)
-        pubby = rospy.Publisher("/robotiq_hands/" + hand[0] + "_hand/hand_contacts", Touch, queue_size=1)
-        rospy.spin()
+	rospy.spin()
