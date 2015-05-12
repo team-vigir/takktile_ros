@@ -80,7 +80,7 @@ class TakkNode:
         rospy.Service(topic + '/zero', Empty, self.zero_callback)
         
         # publish sensor data at 60 Hz
-        r = rospy.Rate(60) 
+        r = rospy.Rate(20) 
 
 	tk.startSampling()
 

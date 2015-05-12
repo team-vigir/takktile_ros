@@ -19,16 +19,13 @@ class TactileState:
 
 class TactileAggregator:
 	def __init__(self, hand_name):
-		if hand_name is not "left" and hand_name is not "right":
-			rospy.logerr("Improper hand argument given to TactileAggregator constructor")
-		
 		# Constants
 		self.err_code = -1	# Code to send when a finger is missing. TODO: make is a rosparam
 	        self.scaler = -1.0 / 50	# Value to scale the calibrated sensor data
 	
 		# ROS IO
-		self.tactile_data_sub = rospy.Subscriber("/" + hand_name+ "_hand/tactile_data", Touch, self.tactile_callback)
-		self.tactile_info_sub = rospy.Subscriber("/" + hand_name + "_hand/sensor_info", Info, self.info_callback)
+		self.tactile_data_sub = rospy.Subscriber(hand_name+ "_hand/tactile_data", Touch, self.tactile_callback)
+		self.tactile_info_sub = rospy.Subscriber(hand_name + "_hand/sensor_info", Info, self.info_callback)
 		self.tactile_aggregate_pub = rospy.Publisher("/robotiq_hands/" + hand_name[0] + "_hand/hand_contacts", Touch, queue_size=1)
 		
 		self.cur_indices = None
@@ -105,8 +102,10 @@ class TactileAggregator:
 if __name__ == '__main__':
         rospy.init_node("hand_contacts_node")
 	rospy.logwarn("Assumption: the takktile sensor info data feed will omit entire pads, not single sensors inside a pad.")
-        
-	l_hand = TactileAggregator("left")
-	r_hand = TactileAggregator("right")
+	
+	hand = rospy.get_param("~hand_side", "left")
 
+	#rospy.logerr("Hand side: '" + hand + "'")
+
+	takk_agg = TactileAggregator(hand)
 	rospy.spin()

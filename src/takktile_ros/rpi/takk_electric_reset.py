@@ -3,6 +3,7 @@
 # Valuable Resources: http://sourceforge.net/p/raspberry-gpio-python/wiki/BasicUsage/
 #	pi pinout diagram in takktile_ros catkin branch
 import sys
+import os
 import rospy
 import RPi.GPIO as GPIO
 from takktile_ros.msg import Touch
@@ -16,14 +17,15 @@ def power_cycle_takk():
 	
 	# Toggle the switch pin for a duration
 	rospy.logdebug("Toggling takktile sensors")
-	GPIO.output(switch_channel, GPIO.LOW)
-	rospy.sleep(off_duration)
-	GPIO.output(switch_channel, GPIO.HIGH)
+	#GPIO.output(switch_channel, GPIO.LOW)
+	#rospy.sleep(off_duration)
+	#GPIO.output(switch_channel, GPIO.HIGH)
+	os.system("sudo ~/gpio_toggle.py --pin=" + str(switch_channel) + " --duration=" + str(off_duration.to_sec()))
 
 # Pulls the current takktile reset duration from the parameter server
 def get_off_duration():
 	try:
-		off_duration = rospy.get_param("takktile_off_duration")
+		off_duration = rospy.get_param("/takktile_off_duration")
 		return rospy.Duration(off_duration)
 	except KeyError:
 		rospy.logfatal("Parameter takktile_off_duration is missing from the parameter server. Cannot synchronize with takktile keepalive")
@@ -41,12 +43,9 @@ def takktile_data_cb(msg):
 if __name__ == "__main__":
 	rospy.init_node("takk_electric_reset")
 
-	init_gpio()
+	#init_gpio()
 	hand = rospy.get_param("~hand_side", "left")
 	takktile_topic = rospy.get_param("~takktile_reset_topic", "left_hand/tactile/calibrated")
-	#rospy.logerr("takktile reset node developed for left hand only. Set parameter server appropriately.")
-	#hand= "left"
-	#takktile_topic = "takktile/raw"
 
 	rospy.loginfo("Tactile reset enabled listening to " + takktile_topic + " for tactile updates on hand " + hand)
 
