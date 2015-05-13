@@ -45,6 +45,7 @@ import rospy
 
 import os, inspect   # used for loading conf file relative to script directory
 import numpy as np   # used for array operations
+import time
 
 from std_srvs.srv import Empty
 from geometry_msgs.msg import Point
@@ -52,6 +53,9 @@ from takktile_ros.msg import Raw, Touch, Contact, Info
 
 from TakkTile import TakkTile
 from yaml import safe_load
+
+sensors_ready = False 	# Initialization flag to prevent USB access before the
+			#	sensors are ready
 
 class TakkNode:
     def __init__(self, xyz_map, frame_id, temp_lowpass, contact_threshold):
@@ -69,6 +73,7 @@ class TakkNode:
         # slow topic
         info_pub = rospy.Publisher(topic + '/sensor_info', Info, queue_size=1)
         # initialize connection to TakkTile
+	wait_for_takktiles()
         tk = TakkTile()
 
         # get static values once
@@ -139,6 +144,7 @@ class TakkNode:
 	# switch things off
 	print "switching off"
 	tk.stopSampling()
+	time.sleep(2)
 
     # start 'calibrate' service
     def zero_callback(self, msg):
@@ -172,6 +178,22 @@ def get_param(param_name, config, default):
     except:
         if config.has_key(param_name):
             return config[param_name]    
+
+def handle_takktile_goahead(req):
+	global sensors_ready
+	sensors_ready = True
+	return []
+
+# JC Additions:
+#	Insert a dummy server so the reset node can control when the takktile
+#	sensors are ready
+def wait_for_takktiles():
+	goahead_srv = rospy.Service("takktile_goahead", Empty, handle_takktile_goahead)
+	checkin_freq = rospy.Duration(0.5)
+	while not sensors_ready and not rospy.is_shutdown():
+		rospy.loginfo("Takktile_node has not yet received goahead signal from electric reset")
+		rospy.sleep(checkin_freq)
+	
 
 if __name__ == '__main__':
 	#   temp lowpass
