@@ -37,39 +37,42 @@
 #   calibration coefficients (if specified manually)
 #
 ########################################################################
-# rosmake --target=clean -a --build-everything
-
-
-import roslib; roslib.load_manifest('takktile_ros')
 import rospy
 
 import os, inspect   # used for loading conf file relative to script directory
 import numpy as np   # used for array operations
+import time
+import takk_comms
 
+from std_msgs.msg import String
 from std_srvs.srv import Empty
 from geometry_msgs.msg import Point
 from takktile_ros.msg import Raw, Touch, Contact, Info
 
-from takktile_http import TakktileHTTP as TakkTile
+from TakkTile import TakkTile
 from yaml import safe_load
 
-class TakkNode:
-    def __init__(self, xyz_map, frame_id, temp_lowpass, contact_threshold):
-        topic = 'takktile'
-        
-        # Set up node & topics
-        rospy.init_node(topic, anonymous=True)
-        rospy.loginfo(rospy.get_name()+" node initialized")
+sensors_ready = False 	# Initialization flag to prevent USB access before the
+			#	sensors are ready
 
+class TakkNode:
+    def __init__(self, xyz_map, frame_id, temp_lowpass, contact_threshold, topic):
         # fast topics
-        raw_pub        = rospy.Publisher(topic + '/raw',     Raw)
-        calibrated_pub = rospy.Publisher(topic + '/calibrated',   Touch)
-        contact_pub    = rospy.Publisher(topic + '/contact', Contact)
+        raw_pub        = rospy.Publisher(topic + '/raw',     Raw, queue_size=1)
+        calibrated_pub = rospy.Publisher(topic + '/calibrated',   Touch, queue_size=1)
+        contact_pub    = rospy.Publisher(topic + '/contact', Contact, queue_size=1)
 
         # slow topic
-        info_pub = rospy.Publisher(topic + '/sensor_info', Info)
-        # initialize connection to TakkTile
-        tk = TakkTile(hostname="takktile",port=80)
+        info_pub 		= rospy.Publisher(topic + '/sensor_info', Info, queue_size=1)
+	#init_complete_pub 	= rospy.Publisher('takk_loaded', String, queue_size=1, latch=True)
+        
+	# initialize connection to TakkTile
+	rospy.logdebug("Creating takktile interface.")
+	cli = takk_comms.init_cli()
+	takk_comms.send_msg("Takktiles online.", cli)
+	takk_comms.shutdown(cli)
+	#init_complete_pub.publish('Takktile node online')
+	tk = TakkTile()
 
         # get static values once
         self.alive = tk.alive
@@ -79,14 +82,16 @@ class TakkNode:
         # start rospy service for zeroing sensors
         rospy.Service(topic + '/zero', Empty, self.zero_callback)
         
-        # publish sensor data at 60 Hz
-        r = rospy.Rate(60) 
+        # publish sensor data at 20 Hz
+        r = rospy.Rate(20) 
 
+	rospy.logdebug("Beginning sampling")
 	tk.startSampling()
 
 	# initialize temperature lowpass with actual data
+	rospy.logdebug("Getting first data.")
         data = tk.getDataRaw()
-	print 'self.getDataRaw():', data
+	# print 'self.getDataRaw():', data
 
 	# unpack the values
 	# first - extract the values from the dictionary
@@ -96,20 +101,19 @@ class TakkNode:
         self.temp = np.array(self.temp)
 	self.calibration = -np.array(self.pressure) # zero values at startup
 
+
         i = 0
-        #k = 0
         while not rospy.is_shutdown():
             i += 1
             if i >= 100: # downsample static info
                 info_pub.publish(frame_id, xyz_map, self.alive)
                 i = 0
-                #k += 100
-                #print k
 
             # publish sensor vals at 100 Hz
             calibrated = [0.0] * num_alive
             contact = [False] * num_alive
 
+	    rospy.logdebug("Grabbing data.")
 	    data=tk.getDataRaw()
 
 	    # unpack the values
@@ -139,6 +143,7 @@ class TakkNode:
 	# switch things off
 	print "switching off"
 	tk.stopSampling()
+	time.sleep(1)
 
     # start 'calibrate' service
     def zero_callback(self, msg):
@@ -173,11 +178,32 @@ def get_param(param_name, config, default):
         if config.has_key(param_name):
             return config[param_name]    
 
+#def handle_takktile_goahead(req):
+#	global sensors_ready
+#	sensors_ready = True
+#	return []
+
+
+# JC Additions:
+#	Insert a dummy server so the reset node can control when the takktile
+#	sensors are ready
+#def wait_for_takktiles():
+#	goahead_srv = rospy.Service("takktile_goahead", Empty, handle_takktile_goahead)
+#	checkin_freq = rospy.Duration(0.5)
+#	while not sensors_ready and not rospy.is_shutdown():
+#		rospy.loginfo("Takktile_node has not yet received goahead signal from electric reset")
+#		rospy.sleep(checkin_freq)
+	
+
 if __name__ == '__main__':
 	#   temp lowpass
 	#   contact thresh
 	#   frame_id
 	#   xyz mapping
+        
+	topic = 'takktile'
+        rospy.init_node(topic, anonymous=True)
+        rospy.loginfo(rospy.get_name()+" node initialized")
 	
 	config_file = rospy.get_param('config_file', 'takktile.yaml')
 	config = load_config(config_file)
@@ -193,4 +219,4 @@ if __name__ == '__main__':
 	for i in range(40):
 		XYZ_MAP += [Point(config[i][0], config[i][1], config[i][2])]
 
-	TakkNode(XYZ_MAP, FRAME_ID, TEMPERATURE_LOWPASS, CONTACT_THRESHOLD)
+	TakkNode(XYZ_MAP, FRAME_ID, TEMPERATURE_LOWPASS, CONTACT_THRESHOLD, topic)

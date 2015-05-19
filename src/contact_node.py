@@ -22,13 +22,13 @@ class TactileAggregator:
 		# Constants
 		self.err_code = -1	# Code to send when a finger is missing. TODO: make is a rosparam
 	        self.scaler = -1.0 / 50	# Value to scale the calibrated sensor data
+		self.cur_indices = None
 	
 		# ROS IO
-		self.tactile_data_sub = rospy.Subscriber(hand_name+ "_hand/tactile_data", Touch, self.tactile_callback)
-		self.tactile_info_sub = rospy.Subscriber(hand_name + "_hand/sensor_info", Info, self.info_callback)
-		self.tactile_aggregate_pub = rospy.Publisher("/robotiq_hands/" + hand_name[0] + "_hand/hand_contacts", Touch, queue_size=1)
-		
-		self.cur_indices = None
+		self.tactile_data_sub = rospy.Subscriber("takktile/calibrated", Touch, self.tactile_callback)
+		self.tactile_info_sub = rospy.Subscriber("takktile/sensor_info", Info, self.info_callback)
+		self.tactile_aggregate_pub = rospy.Publisher("robotiq_hands/" + hand_name[0] + "_hand/hand_contacts", Touch, queue_size=1)
+
 
 	def info_callback(self, msg):
 		self.cur_indices = msg.indexes
@@ -73,9 +73,10 @@ class TactileAggregator:
 			
 	
 	        # Compose out message: Albert's code expects the following order:
-		#	middle, pinky, index, palm
+		#	middle, index, pinky, palm
+		# print "Palm: ", touch_record.palm, " Thumb: ", touch_record.middle, " Index: ", touch_record.index, " Pinky: ", touch_record.pinky
 		out_msg = Touch()
-		out_msg.pressure = [touch_record.middle, touch_record.pinky, touch_record.index, touch_record.palm]
+		out_msg.pressure = [touch_record.middle, touch_record.index, touch_record.pinky, touch_record.palm]
 
         	self.tactile_aggregate_pub.publish(out_msg)
 	

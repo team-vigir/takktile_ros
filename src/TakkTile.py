@@ -3,6 +3,7 @@
 # Written by Ian Daniher
 # Licensed under the terms of the GNU GPLv3+
 
+import rospy # For logging
 import usb
 import re
 import itertools
@@ -22,6 +23,7 @@ class TakkTile:
 		self.dev = usb.core.find(idVendor=0x59e3, idProduct=0x74C7)
 		if self.dev == None:
 			print("Can't find TakkTile USB interface!")
+			rospy.logerr("Can't find TakkTile USB interface!")
 			quit()
 		self.arrayID = arrayID
 		# populates bitmap of live sensors
@@ -121,6 +123,7 @@ class TakkTile:
 
 if __name__ == "__main__":
 	import sys, pprint
+	rospy.init_node("Takktile_node", anonymous=True)
 	tact = TakkTile()
 	print tact.alive
 	print tact.UID
