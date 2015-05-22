@@ -1,28 +1,17 @@
 #!/usr/bin/env python
 import roslib; roslib.load_manifest('takktile_ros')
 import rospy
+import sys
 from takktile_ros.msg import Raw, Touch, Contact, Info
 from std_msgs.msg import String
-import sys
-
-#TODO: Run this aggregation node on the pi itself and prevent transmitting lots of crap data onto the system
-
-# An easy-to-reference model of the hand's takktile arrays.
-#	Meant to be filled with float data between 0 and 1
-#	or an error for each finger.
-class TactileState:
-	def __init__(self, err_code):
-		self.middle = err_code
-		self.pinky = err_code
-		self.index = err_code
-		self.palm = err_code
+import takk_lut
 
 class TactileAggregator:
 	def __init__(self, hand_name):
 		# Constants
-		self.err_code = -1	# Code to send when a finger is missing. TODO: make is a rosparam
 	        self.scaler = -1.0 / 50	# Value to scale the calibrated sensor data
 		self.cur_indices = None
+		self.lut = takk_lut.mk_lut()
 	
 		# ROS IO
 		self.tactile_data_sub = rospy.Subscriber("takktile/calibrated", Touch, self.tactile_callback)
@@ -51,27 +40,17 @@ class TactileAggregator:
 	                #print "\tpressure: ", pressure
 	                scaled_pressures.append(out_pressure)
 		
-		# Iterate through available sensor data using sensor info
-		#	to determine when to pull values and when to error-fill
-		# The order: index, pinky, middle, palm
-		touch_record = TactileState(self.err_code)
-		sensor_start = 0
-		if self.index_present():
-			touch_record.index = self.aggregate(scaled_pressures[sensor_start:sensor_start + 6])
-			sensor_start += 6
+		# Aggregate data
+		touch_record = None
+		lut_idx = takk_lut.get_idx(self.cur_indices)
+		#rospy.logerr("Lut_idx: " +  str(lut_idx))
+		if self.lut[lut_idx] != None:
+			#rospy.logerr("Taking the LUT")
+			touch_record = self.lut[lut_idx](scaled_pressures)
+		else:
+			#rospy.logerr("Not taking the LUT")
+			touch_record = self.default_aggregator(scaled_pressures)
 
-		if self.pinky_present():
-			touch_record.pinky = self.aggregate(scaled_pressures[sensor_start:sensor_start + 6])
-			sensor_start += 6
-
-		if self.middle_present():
-			touch_record.middle = self.aggregate(scaled_pressures[sensor_start:sensor_start + 6])
-			sensor_start += 6
-
-		if self.palm_present():
-			touch_record.palm = self.aggregate(scaled_pressures[sensor_start:])
-			
-	
 	        # Compose out message: Albert's code expects the following order:
 		#	middle, index, pinky, palm
 		# print "Palm: ", touch_record.palm, " Thumb: ", touch_record.middle, " Index: ", touch_record.index, " Pinky: ", touch_record.pinky
@@ -80,6 +59,31 @@ class TactileAggregator:
 
         	self.tactile_aggregate_pub.publish(out_msg)
 	
+
+	# Iterate through available sensor data using sensor info
+	#	to determine when to pull values and when to error-fill
+	# The order: index, pinky, middle, palm
+	def default_aggregator(self, scaled_pressures):
+		touch_record = takk_lut.TactileState(takk_lut.ERR_CODE)
+		sensor_start = 0
+		if self.index_present():
+			touch_record.index = takk_lut.aggregate(scaled_pressures[sensor_start:sensor_start + 6])
+			sensor_start += 6
+
+		if self.pinky_present():
+			touch_record.pinky = takk_lut.aggregate(scaled_pressures[sensor_start:sensor_start + 6])
+			sensor_start += 6
+
+		if self.middle_present():
+			touch_record.middle = takk_lut.aggregate(scaled_pressures[sensor_start:sensor_start + 6])
+			sensor_start += 6
+
+		if self.palm_present():
+			touch_record.palm = takk_lut.aggregate(scaled_pressures[sensor_start:])
+		
+		return touch_record
+	
+
 	def index_present(self):
 		return (3 in self.cur_indices)
 
@@ -91,14 +95,6 @@ class TactileAggregator:
 
 	def palm_present(self):
 		return (25 in self.cur_indices)
-
-	# Currently just a straight average
-	def aggregate(self, pad_pressure_list):
-	        summy = 0
-	        for value in pad_pressure_list:
-	                summy += value
-	
-	        return summy / (len(pad_pressure_list))
 
 if __name__ == '__main__':
         rospy.init_node("hand_contacts_node")
